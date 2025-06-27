@@ -43,6 +43,10 @@ $BASE_PATH/update.sh "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH/$BUILD_DIR" "$COMMIT
 cd "$BASE_PATH/$BUILD_DIR"
 make defconfig
 
+if [[ -d "$BASE_PATH/files" ]]; then
+    \cp -rf "$BASE_PATH/files/"* "$BASE_PATH/$BUILD_DIR/"
+fi
+
 if [[ "$(uname)" == "Darwin" ]]; then
     # macOS
     CPU_CORES=$(sysctl -n hw.ncpu)
