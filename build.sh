@@ -44,6 +44,10 @@ $BASE_PATH/update.sh "$REPO_URL" "$REPO_BRANCH" "$BASE_PATH/$BUILD_DIR" "$COMMIT
 cd "$BASE_PATH/$BUILD_DIR"
 make defconfig
 
+if [[ -d "$BASE_PATH/files" ]]; then
+    \cp -rf "$BASE_PATH/files/"* "$BASE_PATH/$BUILD_DIR/"
+fi
+
 if grep -qE "^CONFIG_TARGET_x86_64=y" "$CONFIG_FILE"; then
     DISTFEEDS_PATH="$BASE_PATH/$BUILD_DIR/package/emortal/default-settings/files/99-distfeeds.conf"
     if [ -d "${DISTFEEDS_PATH%/*}" ] && [ -f "$DISTFEEDS_PATH" ]; then
