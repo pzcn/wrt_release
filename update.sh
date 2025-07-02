@@ -68,6 +68,13 @@ update_feeds() {
         echo "src-git small8 https://github.com/kenzok8/small-package" >>"$BUILD_DIR/$FEEDS_CONF"
     fi
 
+    # 检查并添加 nikki 源
+    if ! grep -q "nikki" "$BUILD_DIR/$FEEDS_CONF"; then
+        # 确保文件以换行符结尾
+        [ -z "$(tail -c 1 "$BUILD_DIR/$FEEDS_CONF")" ] || echo "" >>"$BUILD_DIR/$FEEDS_CONF"
+        echo "src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main" >>"$BUILD_DIR/$FEEDS_CONF"
+    fi
+
     # 添加bpf.mk解决更新报错
     if [ ! -f "$BUILD_DIR/include/bpf.mk" ]; then
         touch "$BUILD_DIR/include/bpf.mk"
@@ -251,6 +258,38 @@ update_default_lan_addr() {
         sed -i 's/192\.168\.[0-9]*\.[0-9]*/'$LAN_ADDR'/g' $CFG_PATH
     fi
 }
+
+fix_ipv6(){
+    local ipv6_script_path="$BUILD_DIR/files/etc/hotplug.d/iface/ipv6_script"
+    
+    # 检测脚本是否存在
+    if [ ! -f "$ipv6_script_path" ]; then
+        # 创建目录（如果不存在）
+        mkdir -p "$(dirname "$ipv6_script_path")"
+        
+        # 创建并写入脚本内容
+        cat > "$ipv6_script_path" << 'EOF'
+#!/bin/sh
+
+case "$ACTION" in
+        ifup)
+                if [ "$INTERFACE" = "wan6" ]; then
+                        ip -6 route add `ip -6 route show default | sed -n -e 's/default from //' -e 's/ via .*$//g' -e '/64$/p'` dev br-lan metric 128
+                        logger -t IPV6 "Route resetting for $INTERFACE up"
+                fi
+                ;;
+esac
+EOF
+        
+        # 赋予可执行权限
+        chmod +x "$ipv6_script_path"
+        
+        echo "IPv6 script created at: $ipv6_script_path"
+    else
+        echo "IPv6 script already exists at: $ipv6_script_path"
+    fi
+}
+
 
 remove_something_nss_kmod() {
     local ipq_target_path="$BUILD_DIR/target/linux/qualcommax/ipq60xx/target.mk"
@@ -456,7 +495,7 @@ update_nss_pbuf_performance() {
 set_build_signature() {
     local file="$BUILD_DIR/feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/10_system.js"
     if [ -d "$(dirname "$file")" ] && [ -f $file ]; then
-        sed -i "s/(\(luciversion || ''\))/(\1) + (' \/ build by ZqinKing')/g" "$file"
+        sed -i "s/(\(luciversion || ''\))/(\1) + (' \/ build by PedroZ')/g" "$file"
     fi
 }
 
@@ -495,6 +534,16 @@ fix_compile_coremark() {
     local file="$BUILD_DIR/feeds/packages/utils/coremark/Makefile"
     if [ -d "$(dirname "$file")" ] && [ -f "$file" ]; then
         sed -i 's/mkdir \$/mkdir -p \$/g' "$file"
+    fi
+}
+
+fix_tailscale_makefile() {
+    local tailscale_makefile="$BUILD_DIR/feeds/small8/tailscale/Makefile"
+    
+    if [ -d "${tailscale_makefile%/*}" ] && [ -f "$tailscale_makefile" ]; then
+        # 从 Makefile 中删除 tailscale 相关的配置文件安装行
+        sed -i '/\/etc\/init\.d\/tailscale/d;/\/etc\/config\/tailscale/d;' "$tailscale_makefile"
+        echo "已修复 tailscale Makefile 配置"
     fi
 }
 
@@ -855,6 +904,7 @@ main() {
     update_dnsmasq_conf
     add_backup_info_to_sysupgrade
     optimize_smartDNS
+    fix_ipv6
     update_mosdns_deconfig
     fix_quickstart
     update_oaf_deconfig
@@ -865,6 +915,7 @@ main() {
     update_smartdns_luci
     update_diskman
     install_feeds
+    fix_tailscale_makefile
     support_fw4_adg
     update_script_priority
     fix_easytier
@@ -873,9 +924,9 @@ main() {
     update_package "containerd" "releases" "v1.7.27"
     update_package "docker" "tags" "v28.2.2"
     update_package "dockerd" "releases" "v28.2.2"
-    # update_package "xray-core"
-    # update_proxy_app_menu_location
-    # update_dns_app_menu_location
+    #update_package "xray-core"
+    #update_proxy_app_menu_location
+    #update_dns_app_menu_location
 }
 
 main "$@"
