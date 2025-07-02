@@ -846,6 +846,18 @@ update_smartdns_luci() {
     fi
 }
 
+fix_jdcloud_device_name() {
+    local dts_file="$BUILD_DIR/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6000-re-ss-01.dts"
+    
+    if [ -d "${dts_file%/*}" ] && [ -f "$dts_file" ]; then
+        # 将设备名称从 "JDCloud RE-SS-01" 修改为 "JDCloud AX1800 Pro"
+        sed -i 's/JDCloud RE-SS-01/JDCloud AX1800 Pro/g' "$dts_file"
+        echo "已修改 JDCloud 设备名称为 AX1800 Pro"
+    else
+        echo "警告：设备树文件 ipq6000-re-ss-01.dts 不存在，跳过修改"
+    fi
+}
+
 update_diskman() {
     local path="$BUILD_DIR/feeds/luci/applications/luci-app-diskman"
     if [ -d "$path" ]; then
@@ -883,6 +895,7 @@ main() {
     change_dnsmasq2full
     fix_mk_def_depends
     add_wifi_default_set
+    fix_jdcloud_device_name
     update_default_lan_addr
     remove_something_nss_kmod
     update_affinity_script
