@@ -858,6 +858,27 @@ fix_jdcloud_device_name() {
     fi
 }
 
+fix_istore_menu_priority() {
+    local controller_dir="$BUILD_DIR/feeds/small8/luci-app-store/luasrc/controller"
+    
+    if [ -d "$controller_dir" ]; then
+        # 查找并修改所有controller文件中的iStore菜单权重
+        find "$controller_dir" -name "*.lua" -type f | while read -r file; do
+            if [ -f "$file" ]; then
+                # 使用sed进行模糊匹配，将iStore菜单权重从任意数字改为3
+                sed -i 's/\(entry({"admin", "store"}, call("redirect_index"), _("iStore"), \)[0-9]\+\()\)/\13\2/g' "$file"
+                
+                # 检查是否有修改
+                if grep -q 'entry({"admin", "store"}, call("redirect_index"), _("iStore"), 3)' "$file"; then
+                    echo "已修改 iStore 菜单权重: $(basename "$file")"
+                fi
+            fi
+        done
+    else
+        echo "警告：iStore controller 目录不存在，跳过菜单权重修改"
+    fi
+}
+
 update_diskman() {
     local path="$BUILD_DIR/feeds/luci/applications/luci-app-diskman"
     if [ -d "$path" ]; then
@@ -929,6 +950,7 @@ main() {
     update_diskman
     install_feeds
     fix_tailscale_makefile
+    fix_istore_menu_priority
     support_fw4_adg
     update_script_priority
     fix_easytier
