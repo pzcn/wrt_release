@@ -903,6 +903,27 @@ update_diskman() {
     fi
 }
 
+write_build_version_to_openwrt_release() {
+    local openwrt_release_file="package/base-files/files/etc/openwrt_release"
+    
+    if [ ! -f "$openwrt_release_file" ]; then
+        echo "错误：文件 $openwrt_release_file 不存在"
+        return 1
+    fi
+    
+    # 获取当前时间，格式为 YYYYMMDDHHMM
+    local build_time=$(date +%Y%m%d%H%M)
+    
+    # 先删除已有的 DISTRIB_BUILD_TIME 行，避免重复
+    sed -i '/^DISTRIB_BUILD_TIME=/d' "$openwrt_release_file"
+    
+    # 追加写入版本号
+    echo "DISTRIB_BUILD_TIME=\"$build_time\"" >> "$openwrt_release_file"
+    
+    echo "已在 $openwrt_release_file 写入版本号：$build_time"
+}
+
+
 main() {
     clone_repo
     clean_up
@@ -955,6 +976,7 @@ main() {
     update_script_priority
     fix_easytier
     update_geoip
+    write_build_version_to_openwrt_release
     # update_package "runc" "releases" "v1.2.6"
     # update_package "containerd" "releases" "v1.7.27"
     # update_package "docker" "tags" "v28.2.2"
