@@ -905,24 +905,183 @@ update_diskman() {
 
 write_build_version_to_openwrt_release() {
     local openwrt_release_file="$BUILD_DIR/package/base-files/files/etc/openwrt_release"
-    
     if [ ! -f "$openwrt_release_file" ]; then
         echo "错误：文件 $openwrt_release_file 不存在"
         return 1
     fi
-    
-    # 获取当前时间，格式为 YYYYMMDDHHMM
     local build_time=$(date +%Y%m%d%H%M)
-    
-    # 先删除已有的 DISTRIB_BUILD_TIME 行，避免重复
     sed -i '/^DISTRIB_BUILD_TIME=/d' "$openwrt_release_file"
-    
-    # 追加写入版本号
     echo "DISTRIB_BUILD_TIME=\"$build_time\"" >> "$openwrt_release_file"
-    
     echo "已在 $openwrt_release_file 写入版本号：$build_time"
+    export BUILD_TIME=$build_time
 }
 
+patch_luci_flash_page() {
+    local flash_js_file="$BUILD_DIR/feeds/luci/modules/luci-mod-system/htdocs/luci-static/resources/view/system/flash.js"
+    if [ ! -f "$flash_js_file" ]; then
+        echo "错误：LuCI flash.js 文件不存在"
+        return 1
+    fi
+    cp "$flash_js_file" "$flash_js_file.bak"
+    
+    # 在文件开头添加 RPC 声明
+    sed -i "/^var callSystemValidateFirmwareImage/a\\
+\\
+var callCheckUpdate = rpc.declare({\\
+\\tobject: 'system',\\
+\\tmethod: 'check_update',\\
+\\tparams: [],\\
+\\texpect: { update_available: false, remote_version: '', download_url: '' }\\
+});\\
+\\
+var callDownloadUpdate = rpc.declare({\\
+\\tobject: 'system',\\
+\\tmethod: 'download_update',\\
+\\tparams: [ 'url' ],\\
+\\texpect: { success: false, message: '' }\\
+});" "$flash_js_file"
+    
+    # 在 handleSysupgrade 函数前添加新的处理函数
+    sed -i "/\\thandleSysupgrade: function/i\\
+\\thandleCheckUpdate: function(ev) {\\
+\\t\\tvar btn = ev.target;\\
+\\t\\tbtn.firstChild.data = _('Checking...');\\
+\\t\\tbtn.disabled = true;\\
+\\t\\treturn callCheckUpdate()\\
+\\t\\t\\t.then(L.bind(function(res) {\\
+\\t\\t\\t\\tif (res.update_available) {\\
+\\t\\t\\t\\t\\tui.showModal(_('Update Available'), [\\
+\\t\\t\\t\\t\\t\\tE('p', _('A new firmware version is available!')),\\
+\\t\\t\\t\\t\\t\\tE('ul', {}, [\\
+\\t\\t\\t\\t\\t\\t\\tE('li', {}, _('Current version: %s').format(res.current_version || 'Unknown')),\\
+\\t\\t\\t\\t\\t\\t\\tE('li', {}, _('Latest version: %s').format(res.remote_version))\\
+\\t\\t\\t\\t\\t\\t]),\\
+\\t\\t\\t\\t\\t\\tE('div', { 'class': 'right' }, [\\
+\\t\\t\\t\\t\\t\\t\\tE('button', {\\
+\\t\\t\\t\\t\\t\\t\\t\\t'class': 'btn',\\
+\\t\\t\\t\\t\\t\\t\\t\\t'click': ui.hideModal\\
+\\t\\t\\t\\t\\t\\t\\t}, [ _('Cancel') ]), ' ',\\
+\\t\\t\\t\\t\\t\\t\\tE('button', {\\
+\\t\\t\\t\\t\\t\\t\\t\\t'class': 'btn cbi-button-action important',\\
+\\t\\t\\t\\t\\t\\t\\t\\t'click': ui.createHandlerFn(this, 'handleDownloadUpdate', res.download_url)\\
+\\t\\t\\t\\t\\t\\t\\t}, [ _('Download and Update') ])\\
+\\t\\t\\t\\t\\t\\t])\\
+\\t\\t\\t\\t\\t]);\\
+\\t\\t\\t\\t} else {\\
+\\t\\t\\t\\t\\tui.addNotification(null, E('p', _('You are running the latest version.')), 'info');\\
+\\t\\t\\t\\t}\\
+\\t\\t\\t}, this))\\
+\\t\\t\\t.catch(function(err) {\\
+\\t\\t\\t\\tui.addNotification(null, E('p', _('Failed to check for updates: %s').format(err.message)), 'warning');\\
+\\t\\t\\t})\\
+\\t\\t\\t.finally(function() {\\
+\\t\\t\\t\\tbtn.firstChild.data = _('Check for Updates');\\
+\\t\\t\\t\\tbtn.disabled = false;\\
+\\t\\t\\t});\\
+\\t},\\
+\\
+\\thandleDownloadUpdate: function(download_url, ev) {\\
+\\t\\tui.hideModal();\\
+\\t\\tui.showModal(_('Downloading Update...'), [\\
+\\t\\t\\tE('p', { 'class': 'spinning' }, _('Downloading firmware, please wait...'))\\
+\\t\\t]);\\
+\\t\\treturn callDownloadUpdate(download_url)\\
+\\t\\t\\t.then(function(res) {\\
+\\t\\t\\t\\tui.hideModal();\\
+\\t\\t\\t\\tif (res.success) {\\
+\\t\\t\\t\\t\\tui.showModal(_('Install Update?'), [\\
+\\t\\t\\t\\t\\t\\tE('p', _('Firmware downloaded successfully. Click Install to start the upgrade process.')),\\
+\\t\\t\\t\\t\\t\\tE('p', { 'class': 'alert-message' }, _('Warning: Do not power off during upgrade!')),\\
+\\t\\t\\t\\t\\t\\tE('div', { 'class': 'right' }, [\\
+\\t\\t\\t\\t\\t\\t\\tE('button', { 'class': 'btn', 'click': ui.hideModal }, [ _('Cancel') ]), ' ',\\
+\\t\\t\\t\\t\\t\\t\\tE('button', { 'class': 'btn cbi-button-action important', 'click': function() {\\
+\\t\\t\\t\\t\\t\\t\\t\\tui.showModal(_('Installing...'), [E('p', { 'class': 'spinning' }, _('Installing firmware update...'))]);\\
+\\t\\t\\t\\t\\t\\t\\t\\tfs.exec('/sbin/sysupgrade', ['/tmp/firmware_update.bin']);\\
+\\t\\t\\t\\t\\t\\t\\t\\tui.awaitReconnect(window.location.host);\\
+\\t\\t\\t\\t\\t\\t\\t} }, [ _('Install Now') ])\\
+\\t\\t\\t\\t\\t\\t])\\
+\\t\\t\\t\\t\\t]);\\
+\\t\\t\\t\\t} else {\\
+\\t\\t\\t\\t\\tui.addNotification(null, E('p', _('Download failed: %s').format(res.message)), 'error');\\
+\\t\\t\\t\\t}\\
+\\t\\t\\t})\\
+\\t\\t\\t.catch(function(err) {\\
+\\t\\t\\t\\tui.hideModal();\\
+\\t\\t\\t\\tui.addNotification(null, E('p', _('Download failed: %s').format(err.message)), 'error');\\
+\\t\\t\\t});\\
+\\t},\\
+\\
+" "$flash_js_file"
+    
+    # 在 render 函数中添加检查更新的 section
+    sed -i "/o = s.option.*Flash new firmware image/i\\
+\\
+\\t\\to = s.option(form.SectionValue, 'actions', form.NamedSection, 'actions', 'actions', _('Check for Updates'), _('Check for available firmware updates from the official repository.'));\\
+\\t\\tss = o.subsection;\\
+\\
+\\t\\to = ss.option(form.Button, 'check_update', _('Check for Updates'));\\
+\\t\\to.inputstyle = 'action';\\
+\\t\\to.inputtitle = _('Check for Updates');\\
+\\t\\to.onclick = L.bind(this.handleCheckUpdate, this);\\
+\\
+" "$flash_js_file"
+    
+    echo "已成功修改 LuCI flash.js 文件"
+}
+
+install_update_rpc_service() {
+    local rpcd_dir="$BUILD_DIR/package/base-files/files/usr/libexec/rpcd"
+    mkdir -p "$rpcd_dir"
+    local rpc_file="$rpcd_dir/system_update"
+    cat > "$rpc_file" << 'EOF'
+#!/bin/sh
+. /usr/share/libubox/jshn.sh
+case "$1" in
+    check_update)
+        local_version=$(grep DISTRIB_BUILD_TIME /etc/openwrt_release 2>/dev/null | cut -d'"' -f2)
+        [ -z "$local_version" ] && local_version="00000000000"
+        repo_owner="pzcn"
+        repo_name="wrt_release"
+        api_url="https://api.github.com/repos/$repo_owner/$repo_name/releases/latest"
+        remote_info=$(curl -s --connect-timeout 10 "$api_url" 2>/dev/null)
+        if [ $? -ne 0 ]; then
+            echo '{"error": "Failed to connect to update server"}'
+            exit 1
+        fi
+        remote_version=$(echo "$remote_info" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+        download_url=$(echo "$remote_info" | grep '"browser_download_url"' | grep '\.bin' | head -1 | cut -d'"' -f4)
+        if [ "$remote_version" \> "$local_version" ]; then
+            echo "{\"update_available\": true, \"remote_version\": \"$remote_version\", \"download_url\": \"$download_url\", \"current_version\": \"$local_version\"}"
+        else
+            echo "{\"update_available\": false, \"remote_version\": \"$remote_version\", \"download_url\": \"\", \"current_version\": \"$local_version\"}"
+        fi
+        ;;
+    download_update)
+        download_url="$2"
+        if [ -z "$download_url" ]; then
+            echo '{"success": false, "message": "Download URL is required"}'
+            exit 1
+        fi
+        if wget -O /tmp/firmware_update.bin "$download_url" 2>/dev/null; then
+            if /sbin/sysupgrade --test /tmp/firmware_update.bin >/dev/null 2>&1; then
+                echo '{"success": true, "message": "Firmware downloaded and verified successfully"}'
+            else
+                rm -f /tmp/firmware_update.bin
+                echo '{"success": false, "message": "Firmware verification failed"}'
+            fi
+        else
+            echo '{"success": false, "message": "Download failed"}'
+        fi
+        ;;
+    *)
+        echo '{"error": "Unknown method"}'
+        exit 1
+        ;;
+esac
+EOF
+    chmod +x "$rpc_file"
+    echo "已安装 RPC 更新服务: $rpc_file"
+}
 
 main() {
     clone_repo
@@ -977,6 +1136,8 @@ main() {
     fix_easytier
     update_geoip
     write_build_version_to_openwrt_release
+    patch_luci_flash_page
+    install_update_rpc_service
     # update_package "runc" "releases" "v1.2.6"
     # update_package "containerd" "releases" "v1.7.27"
     # update_package "docker" "tags" "v28.2.2"
