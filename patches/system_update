@@ -1,0 +1,27 @@
+#!/bin/sh
+
+case "$1" in
+	check_update)
+		# 读取本地版本
+		local_version=$(grep DISTRIB_BUILD_TIME /etc/openwrt_release | cut -d'"' -f2)
+		
+		# 检查远程版本（GitHub API）
+		remote_info=$(curl -s "https://api.github.com/repos/your_repo/releases/latest")
+		remote_version=$(echo "$remote_info" | grep '"tag_name"' | cut -d'"' -f4)
+		download_url=$(echo "$remote_info" | grep '"browser_download_url"' | head -1 | cut -d'"' -f4)
+		
+		if [ "$remote_version" \> "$local_version" ]; then
+			echo "{\"update_available\": true, \"remote_version\": \"$remote_version\", \"download_url\": \"$download_url\"}"
+		else
+			echo "{\"update_available\": false, \"remote_version\": \"$remote_version\", \"download_url\": \"\"}"
+		fi
+		;;
+	download_update)
+		url="$2"
+		if wget -O /tmp/firmware_update.bin "$url" 2>/dev/null; then
+			echo "{\"success\": true, \"message\": \"Download completed\"}"
+		else
+			echo "{\"success\": false, \"message\": \"Download failed\"}"
+		fi
+		;;
+esac

@@ -903,6 +903,29 @@ update_diskman() {
     fi
 }
 
+copy_patched_files() {
+    local patch_dir="$BASE_PATH/patches"
+    local target1="$BUILD_DIR/target/linux/qualcommax/base-files/sbin/cpuusage"
+    local target2="$BUILD_DIR/target/linux/mediatek/filogic/base-files/sbin/cpuusage"
+
+    # 复制 qualcommax 目录下的 cpuusage 文件
+    if [ -f "$patch_dir/cpuusage" ]; then
+        install -Dm755 "$patch_dir/cpuusage" "$target1"
+        echo "已安装 $patch_dir/cpuusage 到 $target1"
+    else
+        echo "警告：$patch_dir/cpuusage 文件不存在"
+    fi
+
+    # 复制 mediatek 目录下的 hnatusage 文件
+    if [ -f "$patch_dir/hnatusage" ]; then
+        install -Dm755 "$patch_dir/hnatusage" "$target2"
+        echo "已安装 $patch_dir/hnatusage 到 $target2"
+    else
+        echo "警告：$patch_dir/hnatusage 文件不存在"
+    fi
+}
+
+
 main() {
     clone_repo
     clean_up
@@ -955,6 +978,7 @@ main() {
     update_script_priority
     fix_easytier
     update_geoip
+    copy_patched_files
     # update_package "runc" "releases" "v1.2.6"
     # update_package "containerd" "releases" "v1.7.27"
     # update_package "docker" "tags" "v28.2.2"
