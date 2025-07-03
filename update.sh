@@ -904,25 +904,27 @@ update_diskman() {
 }
 
 copy_patched_files() {
-    local patch_dir="$BASE_PATH/patches"
-    local target1="$BUILD_DIR/target/linux/qualcommax/base-files/sbin/cpuusage"
-    local target2="$BUILD_DIR/target/linux/mediatek/filogic/base-files/sbin/cpuusage"
+    local build_dir="$BUILD_DIR"
+    local base_path="$BASE_PATH"
 
-    # 复制 qualcommax 目录下的 cpuusage 文件
-    if [ -f "$patch_dir/cpuusage" ]; then
-        install -Dm755 "$patch_dir/cpuusage" "$target1"
-        echo "已安装 $patch_dir/cpuusage 到 $target1"
-    else
-        echo "警告：$patch_dir/cpuusage 文件不存在"
+    local flash_src="$base_path/patches/flash.js"
+    local flash_dst="$build_dir/feeds/luci/modules/luci-mod-system/htdocs/luci-static/resources/view/system/flash.js"
+
+    local rpc_src="$base_path/patches/system_update"
+    local rpc_dst="$build_dir/package/base-files/files/usr/libexec/rpcd/system_update"
+
+    # 复制 flash.js 并备份原文件
+    if [ -f "$flash_dst" ]; then
+        cp -a "$flash_dst" "${flash_dst}.bak"
+        echo "备份原 flash.js 到 ${flash_dst}.bak"
     fi
 
-    # 复制 mediatek 目录下的 hnatusage 文件
-    if [ -f "$patch_dir/hnatusage" ]; then
-        install -Dm755 "$patch_dir/hnatusage" "$target2"
-        echo "已安装 $patch_dir/hnatusage 到 $target2"
-    else
-        echo "警告：$patch_dir/hnatusage 文件不存在"
-    fi
+    install -Dm644 "$flash_src" "$flash_dst"
+    echo "已安装 flash.js 到 $flash_dst"
+
+    # 复制 system_update 并设置可执行权限
+    install -Dm755 "$rpc_src" "$rpc_dst"
+    echo "已安装 system_update 到 $rpc_dst"
 }
 
 
