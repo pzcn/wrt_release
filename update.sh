@@ -904,7 +904,7 @@ update_diskman() {
 }
 
 write_build_version_to_openwrt_release() {
-    local openwrt_release_file="package/base-files/files/etc/openwrt_release"
+    local openwrt_release_file="$BUILD_DIR/package/base-files/files/etc/openwrt_release"
     
     if [ ! -f "$openwrt_release_file" ]; then
         echo "错误：文件 $openwrt_release_file 不存在"
