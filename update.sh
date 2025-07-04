@@ -926,6 +926,29 @@ copy_patched_files() {
     echo "已安装 system_update 到 $rpc_dst"
 }
 
+write_build_version() {
+    local version_file="package/base-files/files/etc/openwrt_release"
+    local repo_info="${GITHUB_REPOSITORY:-}"
+    local repo_owner repo_name
+    if [ -n "$repo_info" ] && [[ "$repo_info" == */* ]]; then
+        repo_owner="${repo_info%%/*}"
+        repo_name="${repo_info##*/}"
+    else
+        repo_owner="default_owner"
+        repo_name="default_repo"
+    fi
+
+    local build_time
+    build_time=$(date +%Y%m%d%H%M)
+    local api_url="https://api.github.com/repos/${repo_owner}/${repo_name}/releases/latest"
+    mkdir -p "$(dirname "$version_file")"
+    {
+        echo "DISTRIB_BUILD_TIME=\"$build_time\""
+        echo "DISTRIB_API_URL=\"$api_url\""
+    } > "$version_file"
+
+    echo "版本号和API URL已写入到 $version_file: $build_time, $api_url"
+}
 
 main() {
     clone_repo
@@ -987,6 +1010,7 @@ main() {
     #update_package "xray-core"
     #update_proxy_app_menu_location
     #update_dns_app_menu_location
+    write_build_version 
 }
 
 main "$@"
