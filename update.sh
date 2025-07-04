@@ -946,7 +946,12 @@ write_build_version() {
         echo "DISTRIB_BUILD_TIME=\"$build_time\""
         echo "DISTRIB_API_URL=\"$api_url\""
     } > "$version_file"
-
+    if [ -n "$GITHUB_ENV" ]; then
+        echo "BUILD_TIME=$build_time" >> "$GITHUB_ENV"
+        echo "版本号写入环境变量 BUILD_TIME=$build_time"
+    else
+        echo "未检测到 GITHUB_ENV 环境变量，未写入环境变量文件。BUILD_TIME=$build_time"
+    fi
     echo "版本号和API URL已写入到 $version_file: $build_time, $api_url"
 }
 
