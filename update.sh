@@ -977,7 +977,7 @@ main() {
     # fix_mkpkg_format_invalid
     chanage_cpuusage
     update_tcping
-    add_ax6600_led
+    #add_ax6600_led
     set_custom_task
     update_pw
     install_opkg_distfeeds
@@ -989,25 +989,25 @@ main() {
     fix_compile_coremark
     update_dnsmasq_conf
     add_backup_info_to_sysupgrade
-    optimize_smartDNS
+    #optimize_smartDNS
     fix_ipv6
     update_mosdns_deconfig
     fix_quickstart
     update_oaf_deconfig
-    add_timecontrol
+    #add_timecontrol
     add_gecoosac
-    update_lucky
+    #update_lucky
     fix_rust_compile_error
-    update_smartdns_luci
+    #update_smartdns_luci
     update_diskman
     install_feeds
     fix_tailscale_makefile
     fix_istore_menu_priority
     support_fw4_adg
     update_script_priority
-    fix_easytier
+    #fix_easytier
     update_geoip
-    copy_patched_files
+    #copy_patched_files
     # update_package "runc" "releases" "v1.2.6"
     # update_package "containerd" "releases" "v1.7.27"
     # update_package "docker" "tags" "v28.2.2"
@@ -1015,7 +1015,7 @@ main() {
     #update_package "xray-core"
     #update_proxy_app_menu_location
     #update_dns_app_menu_location
-    write_build_version 
+    #write_build_version 
 }
 
 main "$@"
