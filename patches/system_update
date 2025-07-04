@@ -1,27 +1,104 @@
 #!/bin/sh
 
+# 设置代理（根据你的代理实际地址和端口调整）
+export http_proxy="http://127.0.0.1:7890"
+export https_proxy="http://127.0.0.1:7890"
+
+. /usr/share/libubox/jshn.sh
+
 case "$1" in
-	check_update)
-		# 读取本地版本
-		local_version=$(grep DISTRIB_BUILD_TIME /etc/openwrt_release | cut -d'"' -f2)
-		
-		# 检查远程版本（GitHub API）
-		remote_info=$(curl -s "https://api.github.com/repos/your_repo/releases/latest")
-		remote_version=$(echo "$remote_info" | grep '"tag_name"' | cut -d'"' -f4)
-		download_url=$(echo "$remote_info" | grep '"browser_download_url"' | head -1 | cut -d'"' -f4)
-		
-		if [ "$remote_version" \> "$local_version" ]; then
-			echo "{\"update_available\": true, \"remote_version\": \"$remote_version\", \"download_url\": \"$download_url\"}"
-		else
-			echo "{\"update_available\": false, \"remote_version\": \"$remote_version\", \"download_url\": \"\"}"
-		fi
-		;;
-	download_update)
-		url="$2"
-		if wget -O /tmp/firmware_update.bin "$url" 2>/dev/null; then
-			echo "{\"success\": true, \"message\": \"Download completed\"}"
-		else
-			echo "{\"success\": false, \"message\": \"Download failed\"}"
-		fi
-		;;
+    list)
+        # 返回可用方法列表，必须实现
+        echo '{ 
+            "check_update": {}, 
+            "download_update": { "url": "string" } 
+        }'
+        ;;
+    call)
+        case "$2" in
+            check_update)
+                json_init
+
+                # 读取本地版本号和 API URL
+                local_version=$(grep DISTRIB_BUILD_TIME /etc/openwrt_release 2>/dev/null | cut -d'"' -f2)
+                [ -z "$local_version" ] && local_version="000000000000"
+
+                api_url=$(grep DISTRIB_API_URL /etc/openwrt_release 2>/dev/null | cut -d'"' -f2)
+                [ -z "$api_url" ] && api_url=""
+
+                if [ -z "$api_url" ]; then
+                    json_add_string "error" "API URL not found in firmware"
+                    json_dump
+                    exit 1
+                fi
+
+                # 访问 GitHub Release API
+                remote_info=$(curl -s --connect-timeout 10 "$api_url" 2>/dev/null)
+                if [ $? -ne 0 ] || [ -z "$remote_info" ]; then
+                    json_add_string "error" "Failed to connect to update server"
+                    json_dump
+                    exit 1
+                fi
+
+				asset_block=$(echo "$remote_info" | grep -A 10 -B 10 'squashfs-sysupgrade.bin' | grep -A 5 -B 5 '"browser_download_url"')
+				download_url=$(echo "$asset_block" | grep '"browser_download_url"' | head -1 | cut -d'"' -f4)
+				digest=$(echo "$asset_block" | grep '"digest"' | head -1 | cut -d'"' -f4)
+				digest=${digest#sha256:}
+				remote_version=$(echo "$remote_info" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+
+                if [ "$remote_version" \> "$local_version" ]; then
+                    json_add_bool "update_available" true
+                else
+                    json_add_bool "update_available" false
+                fi
+
+                json_add_string "remote_version" "$remote_version"
+                json_add_string "download_url" "$download_url"
+                json_add_string "current_version" "$local_version"
+				json_add_string "digest_hash" "$digest"
+                json_dump
+                ;;
+            download_update)
+                read input
+                download_url=$(echo "$input" | jsonfilter -e '@.url')
+
+                json_init
+
+                if [ -z "$download_url" ]; then
+                    json_add_bool "success" false
+                    json_add_string "message" "Download URL is required"
+                    json_dump
+                    exit 1
+                fi
+
+                # 下载固件到临时目录
+                if wget -O /tmp/firmware_update.bin "$download_url" 2>/dev/null; then
+                    # 校验固件有效性
+                    if /sbin/sysupgrade --test /tmp/firmware_update.bin >/dev/null 2>&1; then
+                        json_add_bool "success" true
+                        json_add_string "message" "Firmware downloaded and verified successfully"
+                    else
+                        rm -f /tmp/firmware_update.bin
+                        json_add_bool "success" false
+                        json_add_string "message" "Firmware verification failed"
+                    fi
+                else
+                    json_add_bool "success" false
+                    json_add_string "message" "Download failed"
+                fi
+
+                json_dump
+                ;;
+            *)
+                json_init
+                json_add_string "error" "Unknown method"
+                json_dump
+                exit 1
+                ;;
+        esac
+        ;;
+    *)
+        echo '{"error": "Unknown command"}'
+        exit 1
+        ;;
 esac
