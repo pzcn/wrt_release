@@ -927,33 +927,40 @@ copy_patched_files() {
 }
 
 write_build_version() {
-    local version_file="package/base-files/files/etc/openwrt_release"
-    local repo_info="${GITHUB_REPOSITORY:-}"
-    local repo_owner repo_name
-    if [ -n "$repo_info" ] && [[ "$repo_info" == */* ]]; then
-        repo_owner="${repo_info%%/*}"
-        repo_name="${repo_info##*/}"
-    else
-        repo_owner="default_owner"
-        repo_name="default_repo"
-    fi
-
-    local build_time
-    build_time=$(date +%Y%m%d%H%M)
-    local api_url="https://api.github.com/repos/${repo_owner}/${repo_name}/releases/latest"
-    mkdir -p "$(dirname "$version_file")"
-    {
-        echo "DISTRIB_BUILD_TIME=\"$build_time\""
-        echo "DISTRIB_API_URL=\"$api_url\""
-    } > "$version_file"
+    # 生成发布标签（包含时间戳和Git哈希）
+    local TEMP=$(date +"OpenWrt_%Y%m%d_%H%M%S_")$(git rev-parse --short HEAD)
+    
+    # 将发布标签写入GitHub环境变量
     if [ -n "$GITHUB_ENV" ]; then
-        echo "BUILD_TIME=$build_time" >> "$GITHUB_ENV"
-        echo "版本号写入环境变量 BUILD_TIME=$build_time"
+        echo "RELEASE_TAG=$TEMP" >> "$GITHUB_ENV"
+        echo "发布标签写入环境变量 RELEASE_TAG=$TEMP"
     else
-        echo "未检测到 GITHUB_ENV 环境变量，未写入环境变量文件。BUILD_TIME=$build_time"
+        echo "未检测到 GITHUB_ENV 环境变量，未写入环境变量文件。RELEASE_TAG=$TEMP"
     fi
-    echo "版本号和API URL已写入到 $version_file: $build_time, $api_url"
+    
+    # 设置文件路径
+    local settings_file="openwrt/package/lean/default-settings/files/zzz-default-settings"
+    
+    # 检查设置文件是否存在
+    if [ ! -f "$settings_file" ]; then
+        echo "警告: 设置文件 $settings_file 不存在"
+        return 1
+    fi
+    
+    # 添加 DISTRIB_GITHUB 到 zzz-default-settings
+    sed -i "/DISTRIB_DESCRIPTION=/a\sed -i '/DISTRIB_GITHUB/d' /etc/openwrt_release" "$settings_file"
+    sed -i "/DISTRIB_GITHUB/a\echo \"DISTRIB_GITHUB='https://github.com/\${{github.repository}}'\" >> /etc/openwrt_release" "$settings_file"
+    
+    # 添加 DISTRIB_VERSIONS 到 zzz-default-settings
+    sed -i "/DISTRIB_DESCRIPTION=/a\sed -i '/DISTRIB_VERSIONS/d' /etc/openwrt_release" "$settings_file"
+    sed -i "/DISTRIB_VERSIONS/a\echo \"DISTRIB_VERSIONS='${TEMP:8}'\" >> /etc/openwrt_release" "$settings_file"
+    
+    # 将 github.actor 添加到 DISTRIB_DESCRIPTION
+    sed -i "s/OpenWrt /\${{github.actor}} compiled (${TEMP:8}) \/ OpenWrt /g" "$settings_file"
+    
+    echo "版本信息已更新到 $settings_file，发布标签: $TEMP"
 }
+
 
 main() {
     clone_repo
