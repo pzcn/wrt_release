@@ -1022,7 +1022,7 @@ main() {
     #update_package "xray-core"
     #update_proxy_app_menu_location
     #update_dns_app_menu_location
-    #write_build_version 
+    write_build_version 
 }
 
 main "$@"
