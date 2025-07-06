@@ -939,7 +939,7 @@ write_build_version() {
     fi
     
     # 设置文件路径
-    local settings_file="openwrt/package/lean/default-settings/files/zzz-default-settings"
+    local settings_file="$build_dir/package/base-files/files/etc/openwrt_release"
     
     # 检查设置文件是否存在
     if [ ! -f "$settings_file" ]; then
