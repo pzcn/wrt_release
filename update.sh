@@ -939,26 +939,31 @@ write_build_version() {
     fi
     
     # 设置文件路径
-    local settings_file="$build_dir/package/base-files/files/etc/openwrt_release"
+    local release_file="$build_dir/package/base-files/files/etc/openwrt_release"
     
     # 检查设置文件是否存在
-    if [ ! -f "$settings_file" ]; then
-        echo "警告: 设置文件 $settings_file 不存在"
+    if [ ! -f "$release_file" ]; then
+        echo "警告: 设置文件 $release_file 不存在"
         return 1
     fi
     
-    # 添加 DISTRIB_GITHUB 到 zzz-default-settings
-    sed -i "/DISTRIB_DESCRIPTION=/a\sed -i '/DISTRIB_GITHUB/d' /etc/openwrt_release" "$settings_file"
-    sed -i "/DISTRIB_GITHUB/a\echo \"DISTRIB_GITHUB='https://github.com/\${{github.repository}}'\" >> /etc/openwrt_release" "$settings_file"
+    # 获取GitHub环境变量（如果在GitHub Actions中运行）
+    local github_repo="${GITHUB_REPOSITORY:-unknown/unknown}"
+    local github_actor="${GITHUB_ACTOR:-unknown}"
+    local version="${TEMP:8}"
     
-    # 添加 DISTRIB_VERSIONS 到 zzz-default-settings
-    sed -i "/DISTRIB_DESCRIPTION=/a\sed -i '/DISTRIB_VERSIONS/d' /etc/openwrt_release" "$settings_file"
-    sed -i "/DISTRIB_VERSIONS/a\echo \"DISTRIB_VERSIONS='${TEMP:8}'\" >> /etc/openwrt_release" "$settings_file"
+    # 删除现有的 DISTRIB_GITHUB 行并添加新的
+    sed -i '/DISTRIB_GITHUB/d' "$release_file"
+    echo "DISTRIB_GITHUB='https://github.com/${github_repo}'" >> "$release_file"
     
-    # 将 github.actor 添加到 DISTRIB_DESCRIPTION
-    sed -i "s/OpenWrt /\${{github.actor}} compiled (${TEMP:8}) \/ OpenWrt /g" "$settings_file"
+    # 删除现有的 DISTRIB_VERSIONS 行并添加新的
+    sed -i '/DISTRIB_VERSIONS/d' "$release_file"
+    echo "DISTRIB_VERSIONS='${version}'" >> "$release_file"
     
-    echo "版本信息已更新到 $settings_file，发布标签: $TEMP"
+    # 修改 DISTRIB_DESCRIPTION 添加编译者信息
+    sed -i "s/DISTRIB_DESCRIPTION='OpenWrt /DISTRIB_DESCRIPTION='${github_actor} compiled (${version}) \/ OpenWrt /g" "$release_file"
+    
+    echo "版本信息已更新到 $release_file，发布标签: $TEMP"
 }
 
 
