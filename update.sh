@@ -939,14 +939,14 @@ write_build_version() {
     fi
     
     # 设置文件路径
-    local release_file="$build_dir/package/base-files/files/etc/openwrt_release"
+    local release_file="package/base-files/files/etc/openwrt_release"
     
     # 获取GitHub环境变量（如果在GitHub Actions中运行）
     local github_repo="${GITHUB_REPOSITORY:-unknown/unknown}"
     local version="${TEMP:8}"
 
     # 创建目录（如果不存在）
-    mkdir -p "$(dirname "$release_file")"
+    mkdir -p package/base-files/files/etc/
     
     # 写入版本信息到文件
     {
