@@ -941,27 +941,15 @@ write_build_version() {
     # 设置文件路径
     local release_file="$build_dir/package/base-files/files/etc/openwrt_release"
     
-    # 检查设置文件是否存在
-    if [ ! -f "$release_file" ]; then
-        echo "警告: 设置文件 $release_file 不存在"
-        return 1
-    fi
-    
     # 获取GitHub环境变量（如果在GitHub Actions中运行）
     local github_repo="${GITHUB_REPOSITORY:-unknown/unknown}"
-    local github_actor="${GITHUB_ACTOR:-unknown}"
     local version="${TEMP:8}"
-    
-    # 删除现有的 DISTRIB_GITHUB 行并添加新的
-    sed -i '/DISTRIB_GITHUB/d' "$release_file"
-    echo "DISTRIB_GITHUB='https://github.com/${github_repo}'" >> "$release_file"
-    
-    # 删除现有的 DISTRIB_VERSIONS 行并添加新的
-    sed -i '/DISTRIB_VERSIONS/d' "$release_file"
-    echo "DISTRIB_VERSIONS='${version}'" >> "$release_file"
-    
-    # 修改 DISTRIB_DESCRIPTION 添加编译者信息
-    sed -i "s/DISTRIB_DESCRIPTION='OpenWrt /DISTRIB_DESCRIPTION='${github_actor} compiled (${version}) \/ OpenWrt /g" "$release_file"
+
+    mkdir -p "$(dirname "$version_file")"
+    {
+        echo "DISTRIB_GITHUB='https://github.com/${github_repo}'" >> "$release_file"
+        echo "DISTRIB_VERSIONS='${version}'" >> "$release_file"
+    } > "$version_file"
     
     echo "版本信息已更新到 $release_file，发布标签: $TEMP"
 }
