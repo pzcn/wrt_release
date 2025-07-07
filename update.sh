@@ -945,14 +945,18 @@ write_build_version() {
     local github_repo="${GITHUB_REPOSITORY:-unknown/unknown}"
     local version="${TEMP:8}"
 
-    mkdir -p "$(dirname "$version_file")"
+    # 创建目录（如果不存在）
+    mkdir -p "$(dirname "$release_file")"
+    
+    # 写入版本信息到文件
     {
-        echo "DISTRIB_GITHUB='https://github.com/${github_repo}'" >> "$release_file"
-        echo "DISTRIB_VERSIONS='${version}'" >> "$release_file"
-    } > "$version_file"
+        echo "DISTRIB_GITHUB='https://github.com/${github_repo}'"
+        echo "DISTRIB_VERSIONS='${version}'"
+    } > "$release_file"
     
     echo "版本信息已更新到 $release_file，发布标签: $TEMP"
 }
+
 
 
 main() {
