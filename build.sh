@@ -87,10 +87,32 @@ remove_uhttpd_dependency
 cd "$BASE_PATH/$BUILD_DIR"
 make defconfig
 
+if [[ -d "$BASE_PATH/files" ]]; then
+    \cp -rf "$BASE_PATH/files/"* "$BASE_PATH/$BUILD_DIR/"
+fi
+
+if [[ "$(uname)" == "Darwin" ]]; then
+    # macOS
+    CPU_CORES=$(sysctl -n hw.ncpu)
+else
+    # Linux
+    CPU_CORES=$(nproc)
+fi
+CPU_CORES=${CPU_CORES:-1}
+
+if [[ "$(uname)" == "Darwin" ]]; then
+    # macOS
+    SED_INPLACE_OPT="-i ''"
+else
+    # Linux
+    SED_INPLACE_OPT="-i"
+fi
+
 if grep -qE "^CONFIG_TARGET_x86_64=y" "$CONFIG_FILE"; then
     DISTFEEDS_PATH="$BASE_PATH/$BUILD_DIR/package/emortal/default-settings/files/99-distfeeds.conf"
     if [ -d "${DISTFEEDS_PATH%/*}" ] && [ -f "$DISTFEEDS_PATH" ]; then
-        sed -i 's/aarch64_cortex-a53/x86_64/g' "$DISTFEEDS_PATH"
+        # 使用eval来执行带有变量的sed命令
+        eval "sed ${SED_INPLACE_OPT} 's/aarch64_cortex-a53/x86_64/g' \"$DISTFEEDS_PATH\""
     fi
 fi
 
@@ -103,8 +125,8 @@ if [[ -d $TARGET_DIR ]]; then
     find "$TARGET_DIR" -type f \( -name "*.bin" -o -name "*.manifest" -o -name "*efi.img.gz" -o -name "*.itb" -o -name "*.fip" -o -name "*.ubi" -o -name "*rootfs.tar.gz" \) -exec rm -f {} +
 fi
 
-make download -j$(($(nproc) * 2))
-make -j$(($(nproc) + 1)) || make -j1 V=s
+make download -j$((CPU_CORES * 2))
+make -j$((CPU_CORES + 1)) || make -j1 V=s
 
 FIRMWARE_DIR="$BASE_PATH/firmware"
 \rm -rf "$FIRMWARE_DIR"

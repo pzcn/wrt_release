@@ -85,6 +85,13 @@ update_feeds() {
         echo "src-git small8 https://github.com/kenzok8/small-package" >>"$BUILD_DIR/$FEEDS_CONF"
     fi
 
+    # 检查并添加 nikki 源
+    if ! grep -q "nikki" "$BUILD_DIR/$FEEDS_CONF"; then
+        # 确保文件以换行符结尾
+        [ -z "$(tail -c 1 "$BUILD_DIR/$FEEDS_CONF")" ] || echo "" >>"$BUILD_DIR/$FEEDS_CONF"
+        echo "src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main" >>"$BUILD_DIR/$FEEDS_CONF"
+    fi
+
     # 添加bpf.mk解决更新报错
     if [ ! -f "$BUILD_DIR/include/bpf.mk" ]; then
         touch "$BUILD_DIR/include/bpf.mk"
@@ -268,6 +275,38 @@ update_default_lan_addr() {
         sed -i 's/192\.168\.[0-9]*\.[0-9]*/'$LAN_ADDR'/g' $CFG_PATH
     fi
 }
+
+fix_ipv6(){
+    local ipv6_script_path="$BUILD_DIR/files/etc/hotplug.d/iface/ipv6_script"
+    
+    # 检测脚本是否存在
+    if [ ! -f "$ipv6_script_path" ]; then
+        # 创建目录（如果不存在）
+        mkdir -p "$(dirname "$ipv6_script_path")"
+        
+        # 创建并写入脚本内容
+        cat > "$ipv6_script_path" << 'EOF'
+#!/bin/sh
+
+case "$ACTION" in
+        ifup)
+                if [ "$INTERFACE" = "wan6" ]; then
+                        ip -6 route add `ip -6 route show default | sed -n -e 's/default from //' -e 's/ via .*$//g' -e '/64$/p'` dev br-lan metric 128
+                        logger -t IPV6 "Route resetting for $INTERFACE up"
+                fi
+                ;;
+esac
+EOF
+        
+        # 赋予可执行权限
+        chmod +x "$ipv6_script_path"
+        
+        echo "IPv6 script created at: $ipv6_script_path"
+    else
+        echo "IPv6 script already exists at: $ipv6_script_path"
+    fi
+}
+
 
 remove_something_nss_kmod() {
     local ipq_mk_path="$BUILD_DIR/target/linux/qualcommax/Makefile"
@@ -514,7 +553,7 @@ update_nss_pbuf_performance() {
 set_build_signature() {
     local file="$BUILD_DIR/feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/10_system.js"
     if [ -d "$(dirname "$file")" ] && [ -f $file ]; then
-        sed -i "s/(\(luciversion || ''\))/(\1) + (' \/ build by ZqinKing')/g" "$file"
+        sed -i "s/(\(luciversion || ''\))/(\1) + (' \/ build by PedroZ')/g" "$file"
     fi
 }
 
@@ -542,6 +581,16 @@ fix_compile_coremark() {
     local file="$BUILD_DIR/feeds/packages/utils/coremark/Makefile"
     if [ -d "$(dirname "$file")" ] && [ -f "$file" ]; then
         sed -i 's/mkdir \$/mkdir -p \$/g' "$file"
+    fi
+}
+
+fix_tailscale_makefile() {
+    local tailscale_makefile="$BUILD_DIR/feeds/small8/tailscale/Makefile"
+    
+    if [ -d "${tailscale_makefile%/*}" ] && [ -f "$tailscale_makefile" ]; then
+        # 从 Makefile 中删除 tailscale 相关的配置文件安装行
+        sed -i '/\/etc\/init\.d\/tailscale/d;/\/etc\/config\/tailscale/d;' "$tailscale_makefile"
+        echo "已修复 tailscale Makefile 配置"
     fi
 }
 
@@ -637,9 +686,8 @@ function add_backup_info_to_sysupgrade() {
 
     if [ -f "$conf_path" ]; then
         cat >"$conf_path" <<'EOF'
-/etc/AdGuardHome.yaml
-/etc/easytier
-/etc/lucky/
+/etc/tailscale
+/etc/nikki/
 EOF
     fi
 }
@@ -846,6 +894,39 @@ update_smartdns() {
     fi
 }
 
+fix_jdcloud_device_name() {
+    local dts_file="$BUILD_DIR/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6000-re-ss-01.dts"
+    
+    if [ -d "${dts_file%/*}" ] && [ -f "$dts_file" ]; then
+        # 将设备名称从 "JDCloud RE-SS-01" 修改为 "JDCloud AX1800 Pro"
+        sed -i 's/JDCloud RE-SS-01/JDCloud AX1800 Pro/g' "$dts_file"
+        echo "已修改 JDCloud 设备名称为 AX1800 Pro"
+    else
+        echo "警告：设备树文件 ipq6000-re-ss-01.dts 不存在，跳过修改"
+    fi
+}
+
+fix_istore_menu_priority() {
+    local controller_dir="$BUILD_DIR/feeds/small8/luci-app-store/luasrc/controller"
+    
+    if [ -d "$controller_dir" ]; then
+        # 查找并修改所有controller文件中的iStore菜单权重
+        find "$controller_dir" -name "*.lua" -type f | while read -r file; do
+            if [ -f "$file" ]; then
+                # 使用sed进行模糊匹配，将iStore菜单权重从任意数字改为3
+                sed -i 's/\(entry({"admin", "store"}, call("redirect_index"), _("iStore"), \)[0-9]\+\()\)/\13\2/g' "$file"
+                
+                # 检查是否有修改
+                if grep -q 'entry({"admin", "store"}, call("redirect_index"), _("iStore"), 3)' "$file"; then
+                    echo "已修改 iStore 菜单权重: $(basename "$file")"
+                fi
+            fi
+        done
+    else
+        echo "警告：iStore controller 目录不存在，跳过菜单权重修改"
+    fi
+}
+
 update_diskman() {
     local path="$BUILD_DIR/feeds/luci/applications/luci-app-diskman"
     local repo_url="https://github.com/lisaac/luci-app-diskman.git"
@@ -987,6 +1068,38 @@ update_argon() {
 
     echo "luci-theme-argon 更新完成"
 }
+write_build_version() {
+    # 生成发布标签（包含时间戳和Git哈希）
+    local TEMP=$(date +"OpenWrt_%Y%m%d_%H%M%S_")$(git rev-parse --short HEAD)
+    
+    # 将发布标签写入GitHub环境变量
+    if [ -n "$GITHUB_ENV" ]; then
+        echo "RELEASE_TAG=$TEMP" >> "$GITHUB_ENV"
+        echo "发布标签写入环境变量 RELEASE_TAG=$TEMP"
+    else
+        echo "未检测到 GITHUB_ENV 环境变量，未写入环境变量文件。RELEASE_TAG=$TEMP"
+    fi
+    
+    # 设置文件路径
+    local release_file="package/base-files/files/etc/openwrt_release"
+    
+    # 获取GitHub环境变量（如果在GitHub Actions中运行）
+    local github_repo="${GITHUB_REPOSITORY:-unknown/unknown}"
+    local version="${TEMP:8}"
+
+    # 创建目录（如果不存在）
+    mkdir -p package/base-files/files/etc/
+    
+    # 写入版本信息到文件
+    {
+        echo "DISTRIB_GITHUB='https://github.com/${github_repo}'"
+        echo "DISTRIB_VERSIONS='${version}'"
+    } > "$release_file"
+    
+    echo "版本信息已更新到 $release_file，发布标签: $TEMP"
+}
+
+
 
 main() {
     clone_repo
@@ -1002,6 +1115,7 @@ main() {
     change_dnsmasq2full
     fix_mk_def_depends
     add_wifi_default_set
+    fix_jdcloud_device_name
     update_default_lan_addr
     remove_something_nss_kmod
     update_affinity_script
@@ -1009,7 +1123,7 @@ main() {
     # fix_mkpkg_format_invalid
     change_cpuusage
     update_tcping
-    add_ax6600_led
+    #add_ax6600_led
     set_custom_task
     apply_passwall_tweaks
     install_opkg_distfeeds
@@ -1019,11 +1133,13 @@ main() {
     update_menu_location
     fix_compile_coremark
     update_dnsmasq_conf
-    add_backup_info_to_sysupgrade
+    #add_backup_info_to_sysupgrade
+    #optimize_smartDNS
+    fix_ipv6
     update_mosdns_deconfig
     fix_quickstart
     update_oaf_deconfig
-    add_timecontrol
+    #add_timecontrol
     add_gecoosac
     add_quickfile
     update_lucky
@@ -1034,15 +1150,21 @@ main() {
     update_uwsgi_limit_as
     update_argon
     install_feeds
+    fix_tailscale_makefile
+    fix_istore_menu_priority
     support_fw4_adg
     update_script_priority
-    fix_easytier
+    #fix_easytier
     update_geoip
-    update_package "runc" "releases" "v1.2.6"
-    update_package "containerd" "releases" "v1.7.27"
-    update_package "docker" "tags" "v28.2.2"
-    update_package "dockerd" "releases" "v28.2.2"
-    apply_hash_fixes # 调用哈希修正函数
+    #copy_patched_files
+    # update_package "runc" "releases" "v1.2.6"
+    # update_package "containerd" "releases" "v1.7.27"
+    # update_package "docker" "tags" "v28.2.2"
+    # update_package "dockerd" "releases" "v28.2.2"
+    #update_package "xray-core"
+    #update_proxy_app_menu_location
+    #update_dns_app_menu_location
+    write_build_version 
 }
 
 main "$@"
